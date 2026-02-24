@@ -1,0 +1,24 @@
+# This file is the entry point to configure your own services.
+# Files in the packages/ subdirectory configure your dependencies.
+
+parameters:
+    app.s3_bucket: '%env(S3_BUCKET)%'
+    app.ssh_default_host: '%env(SSH_DEFAULT_HOST)%'
+    app.ssh_default_user: '%env(SSH_DEFAULT_USER)%'
+    app.ssh_default_pass: '%env(SSH_DEFAULT_PASS)%'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+
+    App\MessageHandler\DataTransferHandler:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $awsKey: '%env(AWS_ACCESS_KEY_ID)%'
+            $awsSecret: '%env(AWS_SECRET_ACCESS_KEY)%'
+            $awsRegion: '%env(AWS_REGION)%'
+            $s3Endpoint: '%env(S3_ENDPOINT)%'

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "docker-best-practices": {
+      "source": "josiahsiegel/claude-plugin-marketplace",
+      "sourceType": "github",
+      "computedHash": "1018a8d7e4d63fa1659d1a7845ca6511a6c020b517e396893636070716c7169b"
+    }
+  }
+}

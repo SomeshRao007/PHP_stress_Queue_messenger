@@ -1,0 +1,144 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Job #{{ job.id }} - {{ job.type.label }}{% endblock %}
+
+{% block body %}
+<div class="max-w-4xl mx-auto">
+    <a href="{{ path('dashboard') }}" class="text-indigo-600 hover:underline mb-4 inline-block">
+        &larr; Back to Dashboard
+    </a>
+
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold">Job #{{ job.id }}: {{ job.type.label }}</h2>
+            {% set statusColors = {
+                'pending': 'bg-yellow-100 text-yellow-800',
+                'processing': 'bg-blue-100 text-blue-800',
+                'completed': 'bg-green-100 text-green-800',
+                'failed': 'bg-red-100 text-red-800',
+                'cancelled': 'bg-gray-100 text-gray-800',
+            } %}
+            <span class="px-3 py-1 rounded-full text-sm font-medium {{ statusColors[job.status.value] }}" id="statusBadge">
+                {{ job.status.value|upper }}
+            </span>
+        </div>
+
+        {# Progress bar #}
+        <div class="mb-6">
+            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Progress</span>
+                <span id="progressText">{{ job.progress }}%</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-indigo-600 h-3 rounded-full transition-all duration-500"
+                     style="width: {{ job.progress }}%"
+                     id="progressBar"></div>
+            </div>
+        </div>
+
+        {# Metadata #}
+        <dl class="grid grid-cols-2 gap-4 text-sm mb-6">
+            <div>
+                <dt class="text-gray-500 font-medium">UUID</dt>
+                <dd class="font-mono text-xs mt-1">{{ job.uuid }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500 font-medium">Created</dt>
+                <dd class="mt-1">{{ job.createdAt|date('Y-m-d H:i:s') }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500 font-medium">Started</dt>
+                <dd class="mt-1">{{ job.startedAt ? job.startedAt|date('Y-m-d H:i:s') : '---' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500 font-medium">Completed</dt>
+                <dd class="mt-1">{{ job.completedAt ? job.completedAt|date('Y-m-d H:i:s') : '---' }}</dd>
+            </div>
+        </dl>
+
+        {# Parameters #}
+        <div class="mb-6">
+            <h3 class="font-semibold text-gray-700 mb-2">Parameters</h3>
+            <pre class="bg-gray-50 rounded p-3 text-sm overflow-x-auto border">{{ job.parameters|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre>
+        </div>
+
+        {# Result #}
+        {% if job.result %}
+        <div class="mb-6">
+            <h3 class="font-semibold text-gray-700 mb-2">Result</h3>
+            <pre class="bg-gray-50 rounded p-3 text-sm overflow-x-auto whitespace-pre-wrap border {{ job.status.value == 'failed' ? 'text-red-700 bg-red-50 border-red-200' : 'text-green-700 bg-green-50 border-green-200' }}" id="resultOutput">{{ job.result }}</pre>
+        </div>
+        {% else %}
+        <div class="mb-6 hidden" id="resultContainer">
+            <h3 class="font-semibold text-gray-700 mb-2">Result</h3>
+            <pre class="bg-gray-50 rounded p-3 text-sm overflow-x-auto whitespace-pre-wrap border" id="resultOutput"></pre>
+        </div>
+        {% endif %}
+
+        {# Log output #}
+        <div>
+            <h3 class="font-semibold text-gray-700 mb-2">Execution Log</h3>
+            <pre class="bg-gray-900 text-green-400 rounded p-4 text-sm overflow-x-auto h-64 overflow-y-auto font-mono" id="logOutput">{{ job.log ?? 'No log entries yet.' }}</pre>
+        </div>
+    </div>
+
+    {# Action buttons #}
+    <div class="flex gap-4">
+        {% if job.status.value == 'pending' %}
+            <form method="POST" action="{{ path('job_cancel', {id: job.id}) }}">
+                <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 font-medium">
+                    Cancel Job
+                </button>
+            </form>
+        {% endif %}
+        {% if job.status.value in ['completed', 'failed', 'cancelled'] %}
+            <form method="POST" action="{{ path('job_delete', {id: job.id}) }}"
+                  onsubmit="return confirm('Delete this job permanently?')">
+                <button type="submit" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 font-medium">
+                    Delete Job
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{% if job.status.value in ['pending', 'processing'] %}
+<script>
+const pollInterval = setInterval(async () => {
+    try {
+        const res = await fetch('{{ path('job_status_api', {id: job.id}) }}');
+        const data = await res.json();
+
+        // Update progress bar
+        document.getElementById('progressBar').style.width = data.progress + '%';
+        document.getElementById('progressText').textContent = data.progress + '%';
+
+        // Update log
+        if (data.log) {
+            const logEl = document.getElementById('logOutput');
+            logEl.textContent = data.log;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // Update result if available
+        if (data.result) {
+            const container = document.getElementById('resultContainer');
+            if (container) container.classList.remove('hidden');
+            const resultEl = document.getElementById('resultOutput');
+            if (resultEl) resultEl.textContent = data.result;
+        }
+
+        // Reload on terminal state
+        if (['completed', 'failed', 'cancelled'].includes(data.status)) {
+            clearInterval(pollInterval);
+            setTimeout(() => location.reload(), 500);
+        }
+    } catch (e) {
+        console.error('Poll error:', e);
+    }
+}, 2000);
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,8 @@
+var/cache/
+var/log/
+vendor/
+.env.local
+.git
+.gitignore
+compose.yaml
+compose.override.yaml
