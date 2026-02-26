@@ -15,16 +15,9 @@ RUN docker-php-ext-install \
     zip \
     opcache
 
-# Enable Apache mod_rewrite for Symfony routing
+# Enable Apache mod_rewrite and install Symfony VirtualHost config
 RUN a2enmod rewrite
-
-# Set Apache DocumentRoot to Symfony's public/ directory
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
-    && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
-
-# Allow .htaccess overrides (Symfony uses this for routing)
-RUN sed -ri -e 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
+COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -42,14 +35,14 @@ COPY . .
 
 # Run Symfony post-install scripts and warm up cache
 
-# RUN DATABASE_URL="postgresql://app:app_password@127.0.0.1:5432/job_queue_demo?serverVersion=16&charset=utf8" \
-#     composer run-script post-install-cmd \
-#     && DATABASE_URL="postgresql://app:app_password@127.0.0.1:5432/job_queue_demo?serverVersion=16&charset=utf8" \
-#     php bin/console cache:warmup
+RUN DATABASE_URL="postgresql://app:app_password@a434815-akamai-prod-3365827-default.g2a.akamaidb.net:28213/job_queue_demo?serverVersion=16&charset=utf8" \
+    composer run-script post-install-cmd \
+    && DATABASE_URL="postgresql://app:app_password@a434815-akamai-prod-3365827-default.g2a.akamaidb.net:28213/job_queue_demo?serverVersion=16&charset=utf8" \
+    php bin/console cache:warmup
 
-ENV APP_ENV=prod
-RUN composer run-script post-install-cmd \
-    && php bin/console cache:warmup
+# ENV APP_ENV=prod
+# RUN composer run-script post-install-cmd \
+#     && php bin/console cache:warmup
 
 # Set proper permissions
 RUN chown -R www-data:www-data var/

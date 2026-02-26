@@ -68,6 +68,25 @@
                     </div>
                 </div>
 
+                {# Idle Wait Fields #}
+                <div id="fields-idle_wait" style="display:none">
+                    <p class="text-xs text-gray-500 mb-3 bg-gray-50 rounded p-2">
+                        Low-resource job that simply sleeps — ideal as the last task to keep pods alive for KEDA scaling demos.
+                    </p>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">Duration (seconds)</label>
+                        <input type="number" name="idle_duration" value="300" min="30" max="1800"
+                               class="w-full rounded border p-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <p class="text-xs text-gray-400 mt-1">How long to keep the worker busy (30s – 30min)</p>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">Check Interval (seconds)</label>
+                        <input type="number" name="idle_interval" value="10" min="5" max="60"
+                               class="w-full rounded border p-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <p class="text-xs text-gray-400 mt-1">Progress update frequency (5s – 60s)</p>
+                    </div>
+                </div>
+
                 {# Number of Jobs (common to all types) #}
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700">Number of Jobs</label>

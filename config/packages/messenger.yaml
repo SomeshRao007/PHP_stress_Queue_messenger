@@ -17,3 +17,4 @@ framework:
             'App\Message\CpuStressMessage': async
             'App\Message\DataTransferMessage': async
             'App\Message\RemoteCommandMessage': async
+            'App\Message\IdleWaitMessage': async

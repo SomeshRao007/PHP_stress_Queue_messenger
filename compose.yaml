@@ -1,5 +1,27 @@
 
 services:
+  app:
+    build: .
+    ports:
+      - "8080:80"
+    environment:
+      DATABASE_URL: "postgresql://app:app_password@a434815-akamai-prod-3365827-default.g2a.akamaidb.net:28213/job_queue_demo?serverVersion=16&charset=utf8"
+      MESSENGER_TRANSPORT_DSN: "doctrine://default"
+    depends_on:
+      database:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: php bin/console messenger:consume async --time-limit=3600
+    environment:
+      DATABASE_URL: "postgresql://app:app_password@a434815-akamai-prod-3365827-default.g2a.akamaidb.net:28213/job_queue_demo?serverVersion=16&charset=utf8"
+      MESSENGER_TRANSPORT_DSN: "doctrine://default"
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
 ###> doctrine/doctrine-bundle ###
   database:
     image: postgres:${POSTGRES_VERSION:-16}-alpine

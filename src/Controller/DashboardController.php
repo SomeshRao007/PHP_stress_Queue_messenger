@@ -7,6 +7,7 @@ use App\Enum\JobStatus;
 use App\Enum\JobType;
 use App\Message\CpuStressMessage;
 use App\Message\DataTransferMessage;
+use App\Message\IdleWaitMessage;
 use App\Message\RemoteCommandMessage;
 use App\Repository\JobRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -60,6 +61,7 @@ final class DashboardController extends AbstractController
                 JobType::CpuStress  => $this->buildCpuStressMessage($uuid, $request),
                 JobType::S3Backup   => $this->buildDataTransferMessage($uuid, $request, $i),
                 JobType::SshCommand => $this->buildRemoteCommandMessage($uuid, $request),
+                JobType::IdleWait   => $this->buildIdleWaitMessage($uuid, $request),
             };
 
             $this->em->persist($job);
@@ -154,6 +156,15 @@ final class DashboardController extends AbstractController
             password: $this->getParameter('app.ssh_default_pass'),
             command: $r->request->get('ssh_command', 'uptime'),
             port: (int) $r->request->get('ssh_port', 22),
+        );
+    }
+
+    private function buildIdleWaitMessage(string $uuid, Request $r): IdleWaitMessage
+    {
+        return new IdleWaitMessage(
+            jobUuid: $uuid,
+            durationSeconds: (int) $r->request->get('idle_duration', 300),
+            checkIntervalSeconds: (int) $r->request->get('idle_interval', 10),
         );
     }
 }
