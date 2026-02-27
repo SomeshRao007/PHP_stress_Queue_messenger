@@ -11,3 +11,4 @@
 /.claude
 ###< symfony/framework-bundle ###
 .env
+skills-lock.json

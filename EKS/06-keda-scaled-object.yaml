@@ -1,0 +1,23 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-scaled-object
+  namespace: php-job-demo
+spec:
+  scaleTargetRef:
+    name: worker
+  pollingInterval: 15          # Query PostgreSQL every 15 seconds
+  cooldownPeriod: 60           # Wait 60s before scaling down again
+  minReplicaCount: 0           # Scale to zero when queue is empty
+  maxReplicaCount: 10          # Upper bound on worker replicas
+  triggers:
+    - type: postgresql
+      metadata:
+        targetQueryValue: "5"                  # 1 replica per 5 pending messages
+        activationTargetQueryValue: "1"        # Scale from 0 on first pending message
+        query: >-
+          SELECT COUNT(*) FROM messenger_messages
+          WHERE delivered_at IS NULL
+          AND available_at <= NOW()
+      authenticationRef:
+        name: keda-pg-auth

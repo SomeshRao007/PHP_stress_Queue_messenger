@@ -1,0 +1,10 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-pg-auth
+  namespace: php-job-demo
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: db-keda-secret
+      key: connection

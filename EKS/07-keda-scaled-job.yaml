@@ -1,0 +1,49 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: worker-scaled-job
+  namespace: php-job-demo
+spec:
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 3
+    activeDeadlineSeconds: 120
+    template:
+      metadata:
+        labels:
+          app: php-job-demo
+          component: worker-job
+      spec:
+        containers:
+          - name: worker
+            image: somesh0007/myrepo:php-job-demo-dummyextrdb
+            command: ["php", "bin/console", "messenger:consume", "async", "--limit=1", "--time-limit=60"]
+            envFrom:
+              - secretRef:
+                  name: app-secrets
+            resources:
+              requests:
+                cpu: 200m
+                memory: 128Mi
+              limits:
+                cpu: "1"
+                memory: 512Mi
+        restartPolicy: Never
+  pollingInterval: 15
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  maxReplicaCount: 10
+  scalingStrategy:
+    strategy: accurate           # Create exactly 1 Job per pending message
+  triggers:
+    - type: postgresql
+      metadata:
+        targetQueryValue: "1"
+        activationTargetQueryValue: "1"
+        query: >-
+          SELECT COUNT(*) FROM messenger_messages
+          WHERE delivered_at IS NULL
+          AND available_at <= NOW()
+      authenticationRef:
+        name: keda-pg-auth

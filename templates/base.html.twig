@@ -14,7 +14,10 @@
                 <h1 class="text-white text-xl font-bold">
                     <a href="{{ path('dashboard') }}">Symfony Messenger Job Dashboard</a>
                 </h1>
-                <span class="text-indigo-200 text-sm">Symfony 8.0 + PHP {{ constant('PHP_VERSION') }}</span>
+                <div class="flex items-center gap-4">
+                    <a href="{{ path('scaling_metrics') }}" class="text-indigo-200 hover:text-white text-sm font-medium">Scaling Metrics</a>
+                    <span class="text-indigo-200 text-sm">Symfony 8.0 + PHP {{ constant('PHP_VERSION') }}</span>
+                </div>
             </div>
         </nav>
 
