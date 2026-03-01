@@ -4,6 +4,17 @@ A PHP 8.4 / Symfony 8.0 application designed to demonstrate **KEDA (Kubernetes E
 
 ---
 
+## Documentation Index
+
+| Document | Location | What It Covers |
+|----------|----------|----------------|
+| **This README** | `README.md` | Application code, job types, queue system, Docker setup, EKS deployment |
+| **EKS Kubernetes Manifests** | [EKS/README.md](EKS/README.md) | K8s manifest descriptions, KEDA ScaledObject/ScaledJob configs, apply order |
+| **Terraform / OpenTofu IaC** | [EKS/Terraform/README.md](EKS/Terraform/README.md) | VPC, EKS cluster, IRSA, Prometheus, Grafana, KEDA module design, cost breakdown |
+
+
+---
+
 ## Architecture Overview
 
 ```
@@ -35,10 +46,9 @@ A PHP 8.4 / Symfony 8.0 application designed to demonstrate **KEDA (Kubernetes E
                     +-------------------------------+
                                     ^
                                     |
-                    KEDA polls: SELECT COUNT(*)
-                    FROM messenger_messages
-                    WHERE delivered_at IS NULL
-                    AND available_at <= NOW()
+                    KEDA polls:
+                    ScaledObject → SELECT COUNT(*) FROM messenger_messages
+                    ScaledJob    → ...WHERE delivered_at IS NULL AND available_at <= NOW()
                                     |
                                     v
                     +-------------------------------+
@@ -233,16 +243,22 @@ When KEDA scales up multiple workers, they all consume from the same `messenger_
 
 ### The KEDA Query
 
-KEDA monitors the queue using this PostgreSQL query:
+KEDA monitors the queue using a PostgreSQL trigger. The query differs between ScaledObject and ScaledJob:
 
+**ScaledObject** (`06-keda-scaled-object.yaml`):
 ```sql
 SELECT COUNT(*) FROM messenger_messages
-WHERE delivered_at IS NULL
-AND available_at <= NOW()
 ```
+Counts **all** messages (including those being processed). This prevents KEDA from scaling workers to 0 mid-processing — Symfony sets `delivered_at` immediately when a worker picks up a message, so filtering on `delivered_at IS NULL` would hide in-progress messages and cause premature scale-down.
 
-- `delivered_at IS NULL` — message hasn't been picked up by any worker
-- `available_at <= NOW()` — message is ready (not in retry backoff delay)
+**ScaledJob** (`07-keda-scaled-job.yaml`):
+```sql
+SELECT COUNT(*) FROM messenger_messages
+WHERE delivered_at IS NULL AND available_at <= NOW()
+```
+Counts only **unclaimed** messages. ScaledJob creates one K8s Job per message, and Jobs run to completion independently — KEDA doesn't kill them. Using `COUNT(*)` here would create duplicate Jobs for messages already being processed.
+
+**Why different queries?** ScaledObject controls replica count and can terminate pods on scale-down. ScaledJob creates independent Jobs that run to completion. The query must match the scaling strategy to avoid either killing workers mid-task or spawning duplicate work.
 
 ---
 
@@ -377,7 +393,22 @@ PHP_application_demo/
 │   └── apache.conf                        # Apache VirtualHost config
 ├── Dockerfile                             # PHP 8.4 + Apache image
 ├── compose.yaml                           # Docker Compose (app + worker + DB)
-├── EKS/                                   # Kubernetes manifests (see EKS/README.md)
+├── EKS/                                   # Kubernetes manifests + IaC
+│   ├── 00-namespace.yaml                  # php-job-demo namespace
+│   ├── 01-secrets.yaml                    # App secrets + KEDA DB credentials
+│   ├── 02-web-deployment.yaml             # Web pod (PHP + Apache)
+│   ├── 03-web-service.yaml                # NLB LoadBalancer service
+│   ├── 04-worker-deployment.yaml          # Worker pod (replicas: 0, KEDA-managed)
+│   ├── 05-keda-trigger-auth.yaml          # KEDA PostgreSQL auth
+│   ├── 06-keda-scaled-object.yaml         # KEDA ScaledObject (long-lived workers)
+│   ├── 07-keda-scaled-job.yaml            # KEDA ScaledJob (one-shot jobs)
+│   ├── Terraform/                         # OpenTofu IaC (see EKS/Terraform/README.md)
+│   │   ├── modules/vpc/                   # VPC + subnets
+│   │   ├── modules/eks/                   # EKS cluster + IRSA
+│   │   ├── modules/helm-monitoring/       # Prometheus, Grafana, LB Controller
+│   │   ├── modules/keda/                  # KEDA Helm release
+│   │   └── environments/dev/              # Dev environment root
+│   └── README.md                          # EKS deployment guide
 └── .env                                   # Environment variables
 ```
 
@@ -424,11 +455,80 @@ This starts three containers:
 
 ## Running on Kubernetes (EKS)
 
-See [EKS/README.md](EKS/README.md) for the complete EKS deployment guide, including KEDA installation, manifest descriptions, error troubleshooting, and the scaling comparison test procedure.
+### Infrastructure (one-time setup)
+
+The entire AWS infrastructure is provisioned via OpenTofu. See [EKS/Terraform/README.md](EKS/Terraform/README.md) for full details.
+
+```bash
+cd EKS/Terraform/environments/dev
+tofu init
+tofu plan -out=tfplan
+tofu apply tfplan    # ~10-15 min: creates VPC, EKS, Prometheus, Grafana, KEDA
+
+# Configure kubectl
+aws eks update-kubeconfig --region us-east-1 --name KEDA-symfony-queue
+```
+
+**What gets created:** VPC (10.0.0.0/16, 2 AZs), EKS cluster (v1.35, c6a.large nodes), Prometheus + Grafana (with custom KEDA dashboards), KEDA operator, AWS LB Controller, Cluster Autoscaler. Estimated cost: ~$265/month baseline.
+
+### Deploy Application Manifests
+
+```bash
+# Apply in order (numbered for dependency chain)
+kubectl apply -f EKS/00-namespace.yaml
+kubectl apply -f EKS/01-secrets.yaml          # Edit secrets first!
+kubectl apply -f EKS/02-web-deployment.yaml
+kubectl apply -f EKS/03-web-service.yaml
+kubectl apply -f EKS/04-worker-deployment.yaml
+kubectl apply -f EKS/05-keda-trigger-auth.yaml
+
+# Choose ONE scaling strategy:
+kubectl apply -f EKS/06-keda-scaled-object.yaml    # Long-lived worker pods
+# OR
+kubectl apply -f EKS/07-keda-scaled-job.yaml        # One-shot Job per message
+```
+
+### KEDA Scaling: ScaledObject vs ScaledJob
+
+| | ScaledObject (`06-`) | ScaledJob (`07-`) |
+|---|---|---|
+| **Mechanism** | Scales Deployment replicas (0-10) | Creates K8s Job per message |
+| **Worker command** | `messenger:consume async --time-limit=3600` | `messenger:consume async --limit=1 --time-limit=60` |
+| **Worker lifetime** | Long-lived (1 hour, handles many messages) | Short-lived (1 message, then exits) |
+| **Scale-down** | KEDA reduces replicas (can kill pods) | Jobs run to completion independently |
+| **KEDA query** | `SELECT COUNT(*) FROM messenger_messages` | `...WHERE delivered_at IS NULL AND available_at <= NOW()` |
+| **Best for** | Sustained load, connection reuse | Variable workloads, clean isolation |
+
+### Access Services
+
+```bash
+# Web application URL
+kubectl get svc web -n php-job-demo -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+# Grafana URL (admin / <grafana_admin_password from tfvars>)
+kubectl get svc grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+### Verify Scaling
+
+```bash
+# Check KEDA ScaledObject status
+kubectl get scaledobject -n php-job-demo
+
+# Watch worker pods scale in real-time
+watch -n 2 'kubectl get pods -n php-job-demo -l component=worker'
+
+# KEDA operator logs (scaling decisions)
+kubectl logs -n keda -l app=keda-operator -f --tail=50
+```
+
+For the full EKS manifest reference and troubleshooting guide, see [EKS/README.md](EKS/README.md).
 
 ---
 
 ## Tech Stack
+
+### Application
 
 | Component | Version | Purpose |
 |-----------|---------|---------|
@@ -443,4 +543,16 @@ See [EKS/README.md](EKS/README.md) for the complete EKS deployment guide, includ
 | League Flysystem | 3.x | Filesystem abstraction (S3 adapter) |
 | Tailwind CSS | CDN | Frontend styling |
 | Chart.js | 4.x | Scaling metrics charts |
-| KEDA | 2.x | Kubernetes event-driven autoscaling |
+
+### Infrastructure & Orchestration
+
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| AWS EKS | K8s v1.35 | Managed Kubernetes cluster |
+| KEDA | 2.x | Event-driven autoscaling (PostgreSQL trigger) |
+| Prometheus | kube-prometheus-stack | Metrics collection + ServiceMonitors |
+| Grafana | Standalone Helm | Dashboards (KEDA scaling, pod lifecycle) |
+| OpenTofu | >= 1.8 | Infrastructure as Code (Terraform-compatible) |
+| AWS LB Controller | Helm | NLB provisioning for web + Grafana |
+| Cluster Autoscaler | Helm | EKS node group auto-scaling (2-5 nodes) |
+| Docker | php:8.4-apache | Container image base |
