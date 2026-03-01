@@ -17,7 +17,5 @@ spec:
         activationTargetQueryValue: "0"        # Scale from 0 when metric > 0 (i.e., any pending message)
         query: >-
           SELECT COUNT(*) FROM messenger_messages
-          WHERE delivered_at IS NULL
-          AND available_at <= NOW()
       authenticationRef:
         name: keda-pg-auth

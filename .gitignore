@@ -12,3 +12,7 @@
 ###< symfony/framework-bundle ###
 .env
 skills-lock.json
+EKS/Terraform/environments/dev/.terraform/
+EKS/Terraform/environments/dev/.terraform.lock.hcl
+EKS/Terraform/environments/dev/eks-execution-plan.tfplan
+EKS/Terraform/environments/dev/terraform.tfvars
