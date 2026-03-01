@@ -17,7 +17,7 @@ spec:
       spec:
         containers:
           - name: worker
-            image: somesh0007/myrepo:php-job-demo-dummyextrdb
+            image: somesh0007/myrepo:php-job-extrdb
             command: ["php", "bin/console", "messenger:consume", "async", "--limit=1", "--time-limit=60"]
             envFrom:
               - secretRef:
@@ -40,7 +40,7 @@ spec:
     - type: postgresql
       metadata:
         targetQueryValue: "1"
-        activationTargetQueryValue: "1"
+        activationTargetQueryValue: "0"
         query: >-
           SELECT COUNT(*) FROM messenger_messages
           WHERE delivered_at IS NULL

@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: somesh0007/myrepo:php-job-demo-dummyextrdb
+          image: somesh0007/myrepo:php-job-extrdb
           command: ["php", "bin/console", "messenger:consume", "async", "--time-limit=3600"]
           envFrom:
             - secretRef:

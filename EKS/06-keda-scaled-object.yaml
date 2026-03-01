@@ -14,7 +14,7 @@ spec:
     - type: postgresql
       metadata:
         targetQueryValue: "5"                  # 1 replica per 5 pending messages
-        activationTargetQueryValue: "1"        # Scale from 0 on first pending message
+        activationTargetQueryValue: "0"        # Scale from 0 when metric > 0 (i.e., any pending message)
         query: >-
           SELECT COUNT(*) FROM messenger_messages
           WHERE delivered_at IS NULL
